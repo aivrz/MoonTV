@@ -3,7 +3,7 @@
 
 import { ChevronUp, Search, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   addSearchHistory,
@@ -30,6 +30,9 @@ function SearchPageClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+
+  // 记录最近一次已发起请求的关键词，避免同一关键词重复请求
+  const lastFetchedQueryRef = useRef<string | null>(null);
 
   // 获取默认聚合设置：只读取用户本地设置，默认为 true
   const getDefaultAggregate = () => {
@@ -150,7 +153,14 @@ function SearchPageClient() {
     const query = searchParams.get('q');
     if (query) {
       setSearchQuery(query);
-      fetchSearchResults(query);
+
+      // 同一关键词只请求一次（handleSearch 也会走到这里，不再单独发请求）
+      if (lastFetchedQueryRef.current !== query) {
+        lastFetchedQueryRef.current = query;
+        fetchSearchResults(query);
+      } else {
+        setIsLoading(false);
+      }
 
       // 保存到搜索历史 (事件监听会自动更新界面)
       addSearchHistory(query);
@@ -218,15 +228,21 @@ function SearchPageClient() {
 
     // 回显搜索框
     setSearchQuery(trimmed);
-    setIsLoading(true);
-    setShowResults(true);
-
-    router.push(`/search?q=${encodeURIComponent(trimmed)}`);
-    // 直接发请求
-    fetchSearchResults(trimmed);
 
     // 保存到搜索历史 (事件监听会自动更新界面)
     addSearchHistory(trimmed);
+
+    // 已在结果页且关键词相同：只规范 URL，不重复请求
+    if (lastFetchedQueryRef.current === trimmed && showResults) {
+      setIsLoading(false);
+      router.push(`/search?q=${encodeURIComponent(trimmed)}`);
+      return;
+    }
+
+    // push 后 searchParams 变化会触发上面的 effect 统一发请求，避免双请求
+    setIsLoading(true);
+    setShowResults(true);
+    router.push(`/search?q=${encodeURIComponent(trimmed)}`);
   };
 
   // 返回顶部功能

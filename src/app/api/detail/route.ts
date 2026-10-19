@@ -2,8 +2,22 @@ import { NextResponse } from 'next/server';
 
 import { getAvailableApiSites, getCacheTime } from '@/lib/config';
 import { getDetailFromApi } from '@/lib/downstream';
+import {
+  resolveSearchCacheTtlMs,
+  runWithCache,
+  videoDetailCache,
+} from '@/lib/search-cache';
+import { SearchResult } from '@/lib/types';
 
 export const runtime = 'edge';
+
+function buildCacheHeaders(cacheTime: number) {
+  return {
+    'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
+    'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+    'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+  };
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -26,15 +40,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: '无效的API来源' }, { status: 400 });
     }
 
-    const result = await getDetailFromApi(apiSite, id);
     const cacheTime = await getCacheTime();
 
+    // 详情按 source+id 缓存并合并在途请求，播放页重复进入/换源时直接命中
+    const result = await runWithCache<SearchResult>(
+      videoDetailCache,
+      `${sourceCode}::${id}`,
+      resolveSearchCacheTtlMs(cacheTime),
+      () => getDetailFromApi(apiSite, id)
+    );
+
     return NextResponse.json(result, {
-      headers: {
-        'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-        'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-      },
+      headers: buildCacheHeaders(cacheTime),
     });
   } catch (error) {
     return NextResponse.json(

@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
-import { getConfig } from '@/lib/config';
+import { getConfig, invalidateConfigCache } from '@/lib/config';
 import { getStorage } from '@/lib/db';
 
 export const runtime = 'edge';
@@ -88,6 +88,8 @@ export async function POST(request: NextRequest) {
     if (storage && typeof (storage as any).setAdminConfig === 'function') {
       await (storage as any).setAdminConfig(adminConfig);
     }
+    // 让配置缓存立即失效，下次读取回源
+    invalidateConfigCache();
 
     return NextResponse.json(
       { ok: true },

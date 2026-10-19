@@ -8,12 +8,16 @@ import { SearchResult } from '@/lib/types';
 
 export const runtime = 'edge';
 
+// 并发处理上限：刷新播放记录/收藏时同时请求多个上游详情
+const REFRESH_CONCURRENCY = 5;
+
 export async function GET(request: NextRequest) {
   console.log(request.url);
   try {
     console.log('Cron job triggered:', new Date().toISOString());
 
-    refreshRecordAndFavorites();
+    // serverless 环境下必须 await，否则函数返回后后台任务会被销毁
+    await refreshRecordAndFavorites();
 
     return NextResponse.json({
       success: true,
@@ -33,6 +37,29 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * 以固定并发数执行任务列表，返回与入参等长的结果数组。
+ * 单个任务失败不影响其他任务（由任务内部自行 try/catch）。
+ */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.max(1, Math.min(limit, tasks.length)) },
+    async () => {
+      while (cursor < tasks.length) {
+        const current = cursor++;
+        results[current] = await tasks[current]();
+      }
+    }
+  );
+  await Promise.all(workers);
+  return results;
 }
 
 async function refreshRecordAndFavorites() {
@@ -86,49 +113,54 @@ async function refreshRecordAndFavorites() {
       try {
         const playRecords = await db.getAllPlayRecords(user);
         const totalRecords = Object.keys(playRecords).length;
-        let processedRecords = 0;
 
-        for (const [key, record] of Object.entries(playRecords)) {
-          try {
-            const [source, id] = key.split('+');
-            if (!source || !id) {
-              console.warn(`跳过无效的播放记录键: ${key}`);
-              continue;
+        const tasks = Object.entries(playRecords).map(
+          ([key, record]) => async () => {
+            try {
+              const [source, id] = key.split('+');
+              if (!source || !id) {
+                console.warn(`跳过无效的播放记录键: ${key}`);
+                return false;
+              }
+
+              const detail = await getDetail(source, id, record.title);
+              if (!detail) {
+                console.warn(`跳过无法获取详情的播放记录: ${key}`);
+                return false;
+              }
+
+              const episodeCount = detail.episodes?.length || 0;
+              if (episodeCount > 0 && episodeCount !== record.total_episodes) {
+                await db.savePlayRecord(user, source, id, {
+                  title: detail.title || record.title,
+                  source_name: record.source_name,
+                  cover: detail.poster || record.cover,
+                  index: record.index,
+                  total_episodes: episodeCount,
+                  play_time: record.play_time,
+                  year: detail.year || record.year,
+                  total_time: record.total_time,
+                  save_time: record.save_time,
+                  search_title: record.search_title,
+                });
+                console.log(
+                  `更新播放记录: ${record.title} (${record.total_episodes} -> ${episodeCount})`
+                );
+              }
+
+              return true;
+            } catch (err) {
+              console.error(`处理播放记录失败 (${key}):`, err);
+              // 继续处理下一个记录
+              return false;
             }
-
-            const detail = await getDetail(source, id, record.title);
-            if (!detail) {
-              console.warn(`跳过无法获取详情的播放记录: ${key}`);
-              continue;
-            }
-
-            const episodeCount = detail.episodes?.length || 0;
-            if (episodeCount > 0 && episodeCount !== record.total_episodes) {
-              await db.savePlayRecord(user, source, id, {
-                title: detail.title || record.title,
-                source_name: record.source_name,
-                cover: detail.poster || record.cover,
-                index: record.index,
-                total_episodes: episodeCount,
-                play_time: record.play_time,
-                year: detail.year || record.year,
-                total_time: record.total_time,
-                save_time: record.save_time,
-                search_title: record.search_title,
-              });
-              console.log(
-                `更新播放记录: ${record.title} (${record.total_episodes} -> ${episodeCount})`
-              );
-            }
-
-            processedRecords++;
-          } catch (err) {
-            console.error(`处理播放记录失败 (${key}):`, err);
-            // 继续处理下一个记录
           }
-        }
+        );
 
-        console.log(`播放记录处理完成: ${processedRecords}/${totalRecords}`);
+        const done = await runWithConcurrency(tasks, REFRESH_CONCURRENCY);
+        console.log(
+          `播放记录处理完成: ${done.filter(Boolean).length}/${totalRecords}`
+        );
       } catch (err) {
         console.error(`获取用户播放记录失败 (${user}):`, err);
       }
@@ -137,46 +169,51 @@ async function refreshRecordAndFavorites() {
       try {
         const favorites = await db.getAllFavorites(user);
         const totalFavorites = Object.keys(favorites).length;
-        let processedFavorites = 0;
 
-        for (const [key, fav] of Object.entries(favorites)) {
-          try {
-            const [source, id] = key.split('+');
-            if (!source || !id) {
-              console.warn(`跳过无效的收藏键: ${key}`);
-              continue;
+        const tasks = Object.entries(favorites).map(
+          ([key, fav]) => async () => {
+            try {
+              const [source, id] = key.split('+');
+              if (!source || !id) {
+                console.warn(`跳过无效的收藏键: ${key}`);
+                return false;
+              }
+
+              const favDetail = await getDetail(source, id, fav.title);
+              if (!favDetail) {
+                console.warn(`跳过无法获取详情的收藏: ${key}`);
+                return false;
+              }
+
+              const favEpisodeCount = favDetail.episodes?.length || 0;
+              if (favEpisodeCount > 0 && favEpisodeCount !== fav.total_episodes) {
+                await db.saveFavorite(user, source, id, {
+                  title: favDetail.title || fav.title,
+                  source_name: fav.source_name,
+                  cover: favDetail.poster || fav.cover,
+                  year: favDetail.year || fav.year,
+                  total_episodes: favEpisodeCount,
+                  save_time: fav.save_time,
+                  search_title: fav.search_title,
+                });
+                console.log(
+                  `更新收藏: ${fav.title} (${fav.total_episodes} -> ${favEpisodeCount})`
+                );
+              }
+
+              return true;
+            } catch (err) {
+              console.error(`处理收藏失败 (${key}):`, err);
+              // 继续处理下一个收藏
+              return false;
             }
-
-            const favDetail = await getDetail(source, id, fav.title);
-            if (!favDetail) {
-              console.warn(`跳过无法获取详情的收藏: ${key}`);
-              continue;
-            }
-
-            const favEpisodeCount = favDetail.episodes?.length || 0;
-            if (favEpisodeCount > 0 && favEpisodeCount !== fav.total_episodes) {
-              await db.saveFavorite(user, source, id, {
-                title: favDetail.title || fav.title,
-                source_name: fav.source_name,
-                cover: favDetail.poster || fav.cover,
-                year: favDetail.year || fav.year,
-                total_episodes: favEpisodeCount,
-                save_time: fav.save_time,
-                search_title: fav.search_title,
-              });
-              console.log(
-                `更新收藏: ${fav.title} (${fav.total_episodes} -> ${favEpisodeCount})`
-              );
-            }
-
-            processedFavorites++;
-          } catch (err) {
-            console.error(`处理收藏失败 (${key}):`, err);
-            // 继续处理下一个收藏
           }
-        }
+        );
 
-        console.log(`收藏处理完成: ${processedFavorites}/${totalFavorites}`);
+        const done = await runWithConcurrency(tasks, REFRESH_CONCURRENCY);
+        console.log(
+          `收藏处理完成: ${done.filter(Boolean).length}/${totalFavorites}`
+        );
       } catch (err) {
         console.error(`获取用户收藏失败 (${user}):`, err);
       }

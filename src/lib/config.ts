@@ -48,6 +48,17 @@ export const API_CONFIG = {
 let fileConfig: ConfigFileStruct;
 let cachedConfig: AdminConfig;
 
+// DB 存储下的配置短时缓存：serverless 环境下每次 getConfig 都要读一次库，
+// 对 Upstash/Redis 是持续的 GET 压力。10s TTL 兼顾新鲜度与负载，
+// 管理端写操作后通过 invalidateConfigCache() 立即失效。
+const DB_CONFIG_CACHE_TTL = 10_000;
+let dbConfigCache: { config: AdminConfig; expireAt: number } | null = null;
+
+/** 管理端写入配置后调用，让 DB 配置缓存立即失效 */
+export function invalidateConfigCache() {
+  dbConfigCache = null;
+}
+
 async function initConfig() {
   if (cachedConfig) {
     return;
@@ -282,6 +293,10 @@ export async function getConfig(): Promise<AdminConfig> {
     await initConfig();
     return cachedConfig;
   }
+  // 非 docker 环境且 DB 存储：先命中短时缓存，避免每次请求都读库
+  if (dbConfigCache && dbConfigCache.expireAt > Date.now()) {
+    return dbConfigCache.config;
+  }
   // 非 docker 环境且 DB 存储，直接读 db 配置
   const storage = getStorage();
   let adminConfig: AdminConfig | null = null;
@@ -378,14 +393,26 @@ export async function getConfig(): Promise<AdminConfig> {
       });
     }
     cachedConfig = adminConfig;
+    dbConfigCache = {
+      config: adminConfig,
+      expireAt: Date.now() + DB_CONFIG_CACHE_TTL,
+    };
   } else {
     // DB 无配置，执行一次初始化
     await initConfig();
+    if (cachedConfig) {
+      dbConfigCache = {
+        config: cachedConfig,
+        expireAt: Date.now() + DB_CONFIG_CACHE_TTL,
+      };
+    }
   }
   return cachedConfig;
 }
 
 export async function resetConfig() {
+  // 重置后让缓存立即失效，下一次读取强制回源
+  dbConfigCache = null;
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
   const storage = getStorage();
   // 获取所有用户名，用于补全 Users

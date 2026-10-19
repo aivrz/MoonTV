@@ -174,7 +174,9 @@ export async function getVideoResolutionFromM3u8(m3u8Url: string): Promise<{
               pingTime: Math.round(pingTime),
             });
           } else {
-            // webkit 无法获取尺寸，直接返回
+            // webkit 无法获取尺寸，直接返回（同样需要销毁实例，避免内存泄漏）
+            hls.destroy();
+            video.remove();
             resolve({
               quality: '未知',
               loadSpeed: actualLoadSpeed,

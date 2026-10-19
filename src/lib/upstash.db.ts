@@ -53,6 +53,25 @@ async function withRetry<T>(
   throw new Error('Max retries exceeded');
 }
 
+// Upstash 走 HTTP，KEYS 在大库上代价高，统一改用 SCAN 分页迭代（带去重）
+async function scanKeys(client: Redis, pattern: string): Promise<string[]> {
+  const keys = new Set<string>();
+  let cursor = '0';
+  // 防御性上限：正常库几轮即可扫完，避免异常游标导致死循环
+  for (let round = 0; round < 1000; round++) {
+    const [next, batch] = (await client.scan(cursor, {
+      match: pattern,
+      count: 100,
+    })) as [string | number, string[]];
+    if (Array.isArray(batch)) {
+      batch.forEach((k) => keys.add(String(k)));
+    }
+    cursor = String(next);
+    if (cursor === '0') break;
+  }
+  return Array.from(keys);
+}
+
 export class UpstashRedisStorage implements IStorage {
   private client: Redis;
 
@@ -87,7 +106,7 @@ export class UpstashRedisStorage implements IStorage {
     userName: string
   ): Promise<Record<string, PlayRecord>> {
     const pattern = `u:${userName}:pr:*`;
-    const keys: string[] = await withRetry(() => this.client.keys(pattern));
+    const keys: string[] = await withRetry(() => scanKeys(this.client, pattern));
     if (keys.length === 0) return {};
 
     const result: Record<string, PlayRecord> = {};
@@ -130,7 +149,7 @@ export class UpstashRedisStorage implements IStorage {
 
   async getAllFavorites(userName: string): Promise<Record<string, Favorite>> {
     const pattern = `u:${userName}:fav:*`;
-    const keys: string[] = await withRetry(() => this.client.keys(pattern));
+    const keys: string[] = await withRetry(() => scanKeys(this.client, pattern));
     if (keys.length === 0) return {};
 
     const result: Record<string, Favorite> = {};
@@ -195,7 +214,7 @@ export class UpstashRedisStorage implements IStorage {
     // 删除播放记录
     const playRecordPattern = `u:${userName}:pr:*`;
     const playRecordKeys = await withRetry(() =>
-      this.client.keys(playRecordPattern)
+      scanKeys(this.client, playRecordPattern)
     );
     if (playRecordKeys.length > 0) {
       await withRetry(() => this.client.del(...playRecordKeys));
@@ -204,7 +223,7 @@ export class UpstashRedisStorage implements IStorage {
     // 删除收藏夹
     const favoritePattern = `u:${userName}:fav:*`;
     const favoriteKeys = await withRetry(() =>
-      this.client.keys(favoritePattern)
+      scanKeys(this.client, favoritePattern)
     );
     if (favoriteKeys.length > 0) {
       await withRetry(() => this.client.del(...favoriteKeys));
@@ -213,7 +232,7 @@ export class UpstashRedisStorage implements IStorage {
     // 删除跳过片头片尾配置
     const skipConfigPattern = `u:${userName}:skip:*`;
     const skipConfigKeys = await withRetry(() =>
-      this.client.keys(skipConfigPattern)
+      scanKeys(this.client, skipConfigPattern)
     );
     if (skipConfigKeys.length > 0) {
       await withRetry(() => this.client.del(...skipConfigKeys));
@@ -254,7 +273,7 @@ export class UpstashRedisStorage implements IStorage {
 
   // ---------- 获取全部用户 ----------
   async getAllUsers(): Promise<string[]> {
-    const keys = await withRetry(() => this.client.keys('u:*:pwd'));
+    const keys = await withRetry(() => scanKeys(this.client, 'u:*:pwd'));
     return keys
       .map((k) => {
         const match = k.match(/^u:(.+?):pwd$/);
@@ -318,7 +337,7 @@ export class UpstashRedisStorage implements IStorage {
     userName: string
   ): Promise<{ [key: string]: SkipConfig }> {
     const pattern = `u:${userName}:skip:*`;
-    const keys = await withRetry(() => this.client.keys(pattern));
+    const keys = await withRetry(() => scanKeys(this.client, pattern));
 
     if (keys.length === 0) {
       return {};

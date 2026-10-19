@@ -21,6 +21,7 @@ import {
   saveSkipConfig,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
+import { createAdFilterHlsLoader } from '@/lib/m3u8-ad-filter';
 import { SearchResult } from '@/lib/types';
 import { getVideoResolutionFromM3u8, processImageUrl } from '@/lib/utils';
 
@@ -31,6 +32,58 @@ import PageLayout from '@/components/PageLayout';
 declare global {
   interface HTMLVideoElement {
     hls?: any;
+  }
+}
+
+// 源测速结果（供优选评分与 EpisodeSelector 复用）
+interface SpeedTestResult {
+  quality: string;
+  loadSpeed: string;
+  pingTime: number;
+}
+
+// 源测速缓存：同一会话内重复进入播放页/换源时避免重复测速
+const SPEED_TEST_CACHE_KEY = 'speedTestCache';
+const SPEED_TEST_TTL_MS = 10 * 60 * 1000; // 10 分钟
+const MAX_SPEED_TESTS = 8; // 单次优选最多实测的源数量，未测的源仍可通过换源选择
+
+type SpeedTestCacheEntry = { testResult: SpeedTestResult; ts: number };
+
+/** 读取本会话的测速缓存（自动剔除过期条目） */
+function readSpeedTestCache(): Record<string, SpeedTestCacheEntry> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = sessionStorage.getItem(SPEED_TEST_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const now = Date.now();
+    const fresh: Record<string, SpeedTestCacheEntry> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      const entry = value as SpeedTestCacheEntry | null;
+      if (
+        entry &&
+        typeof entry.ts === 'number' &&
+        now - entry.ts < SPEED_TEST_TTL_MS &&
+        entry.testResult
+      ) {
+        fresh[key] = entry;
+      }
+    }
+    return fresh;
+  } catch {
+    return {};
+  }
+}
+
+function writeSpeedTestCache(
+  entries: Record<string, SpeedTestCacheEntry>
+): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(SPEED_TEST_CACHE_KEY, JSON.stringify(entries));
+  } catch {
+    /* 存储不可用时静默降级 */
   }
 }
 
@@ -202,17 +255,43 @@ function PlayPageClient() {
   const preferBestSource = async (
     sources: SearchResult[]
   ): Promise<SearchResult> => {
-    if (sources.length === 1) return sources[0];
+    if (sources.length <= 1) return sources[0];
 
-    // 将播放源均分为两批，并发测速各批，避免一次性过多请求
-    const batchSize = Math.ceil(sources.length / 2);
-    const allResults: Array<{
+    // 只测有播放地址的源；没有可用地址的源不参与优选
+    const candidates = sources.filter(
+      (source) => source.episodes && source.episodes.length > 0
+    );
+    const testableSources = candidates.length > 0 ? candidates : sources;
+
+    // 先读本会话测速缓存（10 分钟 TTL），未命中的源才实际测速，
+    // 且单次优选最多实测 MAX_SPEED_TESTS 个，避免起播时并发拉起过多隐藏实例
+    const speedTestCache = readSpeedTestCache();
+    const cachedEntries: Array<{
       source: SearchResult;
-      testResult: { quality: string; loadSpeed: string; pingTime: number };
+      testResult: SpeedTestResult;
+    }> = [];
+    const pendingSources: SearchResult[] = [];
+    for (const source of testableSources) {
+      const key = `${source.source}-${source.id}`;
+      const hit = speedTestCache[key];
+      if (hit) {
+        cachedEntries.push({ source, testResult: hit.testResult });
+      } else {
+        pendingSources.push(source);
+      }
+    }
+
+    const sourcesToTest = pendingSources.slice(0, MAX_SPEED_TESTS);
+
+    // 将待测源均分为两批，并发测速各批，避免一次性过多请求
+    const batchSize = Math.ceil(sourcesToTest.length / 2);
+    const testedEntries: Array<{
+      source: SearchResult;
+      testResult: SpeedTestResult;
     } | null> = [];
 
-    for (let start = 0; start < sources.length; start += batchSize) {
-      const batchSources = sources.slice(start, start + batchSize);
+    for (let start = 0; start < sourcesToTest.length; start += batchSize) {
+      const batchSources = sourcesToTest.slice(start, start + batchSize);
       const batchResults = await Promise.all(
         batchSources.map(async (source) => {
           try {
@@ -237,11 +316,25 @@ function PlayPageClient() {
           }
         })
       );
-      allResults.push(...batchResults);
+      testedEntries.push(...batchResults);
     }
 
-    // 等待所有测速完成，包含成功和失败的结果
-    // 保存所有测速结果到 precomputedVideoInfo，供 EpisodeSelector 使用（包含错误结果）
+    // 合并缓存命中与本次实测结果，写回缓存
+    const allEntries = [
+      ...cachedEntries,
+      ...testedEntries.filter(Boolean),
+    ] as Array<{ source: SearchResult; testResult: SpeedTestResult }>;
+
+    const mergedCache = { ...speedTestCache };
+    for (const entry of allEntries) {
+      mergedCache[`${entry.source.source}-${entry.source.id}`] = {
+        testResult: entry.testResult,
+        ts: Date.now(),
+      };
+    }
+    writeSpeedTestCache(mergedCache);
+
+    // 保存所有测速结果到 precomputedVideoInfo，供 EpisodeSelector 使用
     const newVideoInfoMap = new Map<
       string,
       {
@@ -251,21 +344,12 @@ function PlayPageClient() {
         hasError?: boolean;
       }
     >();
-    allResults.forEach((result, index) => {
-      const source = sources[index];
-      const sourceKey = `${source.source}-${source.id}`;
-
-      if (result) {
-        // 成功的结果
-        newVideoInfoMap.set(sourceKey, result.testResult);
-      }
+    allEntries.forEach(({ source, testResult }) => {
+      newVideoInfoMap.set(`${source.source}-${source.id}`, testResult);
     });
 
     // 过滤出成功的结果用于优选计算
-    const successfulResults = allResults.filter(Boolean) as Array<{
-      source: SearchResult;
-      testResult: { quality: string; loadSpeed: string; pingTime: number };
-    }>;
+    const successfulResults = allEntries;
 
     setPrecomputedVideoInfo(newVideoInfoMap);
 
@@ -436,25 +520,7 @@ function PlayPageClient() {
     }
   };
 
-  // 去广告相关函数
-  function filterAdsFromM3U8(m3u8Content: string): string {
-    if (!m3u8Content) return '';
-
-    // 按行分割M3U8内容
-    const lines = m3u8Content.split('\n');
-    const filteredLines = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // 只过滤#EXT-X-DISCONTINUITY标识
-      if (!line.includes('#EXT-X-DISCONTINUITY')) {
-        filteredLines.push(line);
-      }
-    }
-
-    return filteredLines.join('\n');
-  }
+  // 去广告过滤逻辑已抽到 @/lib/m3u8-ad-filter（createAdFilterHlsLoader）
 
   // 跳过片头片尾配置相关函数
   const handleSkipConfigChange = async (newConfig: {
@@ -558,36 +624,6 @@ function PlayPageClient() {
     }
   };
 
-  class CustomHlsJsLoader extends Hls.DefaultConfig.loader {
-    constructor(config: any) {
-      super(config);
-      const load = this.load.bind(this);
-      this.load = function (context: any, config: any, callbacks: any) {
-        // 拦截manifest和level请求
-        if (
-          (context as any).type === 'manifest' ||
-          (context as any).type === 'level'
-        ) {
-          const onSuccess = callbacks.onSuccess;
-          callbacks.onSuccess = function (
-            response: any,
-            stats: any,
-            context: any
-          ) {
-            // 如果是m3u8文件，处理内容以移除广告分段
-            if (response.data && typeof response.data === 'string') {
-              // 过滤掉广告段 - 实现更精确的广告过滤逻辑
-              response.data = filterAdsFromM3U8(response.data);
-            }
-            return onSuccess(response, stats, context, null);
-          };
-        }
-        // 执行原始load方法
-        load(context, config, callbacks);
-      };
-    }
-  }
-
   // 当集数索引变化时自动更新视频地址
   useEffect(() => {
     updateVideoUrl(detail, currentEpisodeIndex);
@@ -658,23 +694,31 @@ function PlayPageClient() {
         return;
       }
       setLoading(true);
-      setLoadingStage(currentSource && currentId ? 'fetching' : 'searching');
+      // 已知 source+id 且不要求优选时，走详情直连快速通道：
+      // 先用 /api/detail 拿到目标视频立即可播，全量搜索改为后台加载用于换源列表，
+      // 避免为了起播一次而全量重搜全部资源站。
+      const canFastPath =
+        Boolean(currentSource && currentId) && !needPreferRef.current;
+      setLoadingStage(canFastPath ? 'fetching' : 'searching');
       setLoadingMessage(
-        currentSource && currentId
-          ? '🎬 正在获取视频详情...'
-          : '🔍 正在搜索播放源...'
+        canFastPath ? '🎬 正在获取视频详情...' : '🔍 正在搜索播放源...'
       );
 
-      let sourcesInfo = await fetchSourcesData(searchTitle || videoTitle);
-      if (
-        currentSource &&
-        currentId &&
-        !sourcesInfo.some(
-          (source) => source.source === currentSource && source.id === currentId
-        )
-      ) {
+      let sourcesInfo: SearchResult[] = [];
+
+      if (canFastPath) {
         sourcesInfo = await fetchSourceDetail(currentSource, currentId);
+        if (sourcesInfo.length > 0) {
+          // 后台异步加载全部源，仅用于换源列表，不阻塞起播
+          void fetchSourcesData(searchTitle || videoTitle);
+        }
       }
+
+      // 未指定源、需要优选、或详情拉取失败时，回退全量搜索
+      if (sourcesInfo.length === 0) {
+        sourcesInfo = await fetchSourcesData(searchTitle || videoTitle);
+      }
+
       if (sourcesInfo.length === 0) {
         setError('未找到匹配结果');
         setLoading(false);
@@ -1280,9 +1324,9 @@ function PlayPageClient() {
               backBufferLength: 30, // 仅保留 30s 已播放内容，避免内存占用
               maxBufferSize: 60 * 1000 * 1000, // 约 60MB，超出后触发清理
 
-              /* 自定义loader */
+              /* 自定义loader（广告过滤，见 @/lib/m3u8-ad-filter） */
               loader: blockAdEnabledRef.current
-                ? CustomHlsJsLoader
+                ? createAdFilterHlsLoader(Hls)
                 : Hls.DefaultConfig.loader,
             });
 
