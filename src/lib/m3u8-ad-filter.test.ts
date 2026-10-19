@@ -270,8 +270,12 @@ describe('createAdFilterHlsLoader', () => {
     const fakeHls = {
       DefaultConfig: {
         loader: class {
-          constructor(_config: any) {}
-          load(_context: any, _config: any, _callbacks: any) {}
+          constructor(_config: any) {
+            /* mock: 不实现 */
+          }
+          load(_context: any, _config: any, _callbacks: any) {
+            /* mock: 不实现 */
+          }
         },
       },
     };
@@ -293,8 +297,12 @@ describe('createAdFilterHlsLoader', () => {
     const fakeHls = {
       DefaultConfig: {
         loader: class {
-          constructor(_config: any) {}
-          load(_context: any, _config: any, _callbacks: any) {}
+          constructor(_config: any) {
+            /* mock: 不实现 */
+          }
+          load(_context: any, _config: any, _callbacks: any) {
+            /* mock: 不实现 */
+          }
         },
       },
     };
