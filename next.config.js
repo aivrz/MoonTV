@@ -2,12 +2,8 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 const nextConfig = {
   output: 'standalone',
-  eslint: {
-    dirs: ['src'],
-  },
 
-  reactStrictMode: false,
-  swcMinify: true,
+  reactStrictMode: true,
 
   // Uncoment to add domain whitelist
   images: {
@@ -64,11 +60,9 @@ const nextConfig = {
   },
 };
 
-const withPWA = require('next-pwa')({
-  dest: 'public',
-  disable: process.env.NODE_ENV === 'development',
-  register: true,
-  skipWaiting: true,
-});
+const withSerwist = require('@serwist/next').default;
 
-module.exports = withPWA(nextConfig);
+module.exports = withSerwist({
+  swSrc: 'src/app/sw.ts',
+  swDest: 'public/sw.js',
+})(nextConfig);

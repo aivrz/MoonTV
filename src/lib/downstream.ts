@@ -1,6 +1,7 @@
 import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
+import { recordSourceFailure, recordSourceSuccess } from '@/lib/source-health';
 
 interface ApiSearchItem {
   vod_id: string;
@@ -37,6 +38,7 @@ export async function searchFromApi(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
+      recordSourceFailure(apiSite.key);
       return [];
     }
 
@@ -47,6 +49,8 @@ export async function searchFromApi(
       !Array.isArray(data.list) ||
       data.list.length === 0
     ) {
+      // 返回结构不符合预期，视为该源异常
+      recordSourceFailure(apiSite.key);
       return [];
     }
     // 处理第一页结果
@@ -124,7 +128,10 @@ export async function searchFromApi(
 
             clearTimeout(pageTimeoutId);
 
-            if (!pageResponse.ok) return [];
+            if (!pageResponse.ok) {
+              recordSourceFailure(apiSite.key);
+              return [];
+            }
 
             const pageData = await pageResponse.json();
 
@@ -163,6 +170,7 @@ export async function searchFromApi(
               };
             });
           } catch (error) {
+            recordSourceFailure(apiSite.key);
             return [];
           }
         })();
@@ -181,8 +189,10 @@ export async function searchFromApi(
       });
     }
 
+    recordSourceSuccess(apiSite.key);
     return results;
   } catch (error) {
+    recordSourceFailure(apiSite.key);
     return [];
   }
 }
@@ -211,6 +221,7 @@ export async function getDetailFromApi(
   clearTimeout(timeoutId);
 
   if (!response.ok) {
+    recordSourceFailure(apiSite.key);
     throw new Error(`详情请求失败: ${response.status}`);
   }
 
@@ -222,6 +233,7 @@ export async function getDetailFromApi(
     !Array.isArray(data.list) ||
     data.list.length === 0
   ) {
+    recordSourceFailure(apiSite.key);
     throw new Error('获取到的详情内容无效');
   }
 
@@ -252,6 +264,7 @@ export async function getDetailFromApi(
     episodes = matches.map((link: string) => link.replace(/^\$/, ''));
   }
 
+  recordSourceSuccess(apiSite.key);
   return {
     id: id.toString(),
     title: videoDetail.vod_name,
@@ -286,6 +299,7 @@ async function handleSpecialSourceDetail(
   clearTimeout(timeoutId);
 
   if (!response.ok) {
+    recordSourceFailure(apiSite.key);
     throw new Error(`详情页请求失败: ${response.status}`);
   }
 
@@ -328,6 +342,7 @@ async function handleSpecialSourceDetail(
   const yearMatch = html.match(/>(\d{4})</);
   const yearText = yearMatch ? yearMatch[1] : 'unknown';
 
+  recordSourceSuccess(apiSite.key);
   return {
     id,
     title: titleText,

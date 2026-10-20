@@ -20,6 +20,12 @@ export interface TtlCacheOptions {
 /** 带 TTL 与容量上限的内存缓存 */
 export class TtlCache<T> {
   private store = new Map<string, { value: T; expiresAt: number }>();
+  /**
+   * 最近一次成功写入的值（不受 TTL 影响），用于「接口失败回退上次成功缓存」。
+   * 与 store 相互独立：即使 store 中的条目已过期被清理，lastGood 仍保留，
+   * 直到被同 key 的新成功结果覆盖或达到容量上限被 FIFO 淘汰。
+   */
+  private lastGood = new Map<string, T>();
   private readonly maxEntries: number;
 
   constructor(options: TtlCacheOptions = {}) {
@@ -39,9 +45,25 @@ export class TtlCache<T> {
     return entry.value;
   }
 
+  /**
+   * 读取最近一次成功写入的值（即便已超出 TTL）。用于失败时兜底返回。
+   * 不会清理条目，也不会刷新 FIFO 位置。
+   */
+  getStale(key: string): T | undefined {
+    return this.lastGood.get(key);
+  }
+
   set(key: string, value: T, ttlMs: number): void {
     if (this.store.has(key)) this.store.delete(key);
     this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+
+    // 同步更新 lastGood（成功结果留存）
+    this.lastGood.set(key, value);
+    while (this.lastGood.size > this.maxEntries) {
+      const oldestKey = this.lastGood.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.lastGood.delete(oldestKey);
+    }
 
     while (this.store.size > this.maxEntries) {
       const oldestKey = this.store.keys().next().value;
@@ -117,4 +139,51 @@ export async function runWithCache<T>(
 export function resolveSearchCacheTtlMs(cacheTimeSeconds: number): number {
   const raw = Math.floor(cacheTimeSeconds / 4) * 1000;
   return Math.min(30 * 60 * 1000, Math.max(60 * 1000, raw));
+}
+
+/**
+ * 带「失败回退上次成功结果」的缓存执行器。
+ *
+ * 与 {@link runWithCache} 类似，但在 producer 抛错时：若 lastGood 中存在
+ * 该 key 的上次成功结果（即便已超出 TTL），则返回该结果并把 `stale` 标记为
+ * true，让上层可以据此打标（如 `X-Cache: STALE`）；若没有任何成功记录，则
+ * 把原错误继续向上抛出。
+ *
+ * 注意：调用方需让 producer 在「所有源都不可用」这类需要兜底的场景主动抛错，
+ * 正常返回空数组（如合法关键词无匹配）不会触发回退。
+ */
+export async function runWithCacheStaleFallback<T>(
+  cache: TtlCache<unknown>,
+  key: string,
+  ttlMs: number,
+  producer: () => Promise<T>
+): Promise<{ data: T; stale: boolean }> {
+  const cached = cache.get(key) as T | undefined;
+  if (cached !== undefined) return { data: cached, stale: false };
+
+  let inFlight = inFlightByCache.get(cache);
+  if (!inFlight) {
+    inFlight = new Map();
+    inFlightByCache.set(cache, inFlight);
+  }
+
+  const pending = inFlight.get(key) as Promise<{ data: T; stale: boolean }> | undefined;
+  if (pending) return pending;
+
+  const promise = (async () => {
+    try {
+      const value = await producer();
+      cache.set(key, value, ttlMs);
+      return { data: value, stale: false };
+    } catch (err) {
+      const stale = cache.getStale(key) as T | undefined;
+      if (stale !== undefined) return { data: stale, stale: true };
+      throw err;
+    } finally {
+      inFlight!.delete(key);
+    }
+  })();
+
+  inFlight.set(key, promise as Promise<unknown>);
+  return promise;
 }

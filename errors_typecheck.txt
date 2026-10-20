@@ -1,0 +1,107 @@
+﻿
+> moontv@0.1.0 typecheck C:\Users\Administrator\Documents\GitHub\MoonTV
+> tsc --noEmit --incremental false
+
+src/app/sw.ts(5,15): error TS2614: Module '"@serwist/next"' has no exported member 'RuntimeCaching'. Did you mean to use 'import RuntimeCaching from "@serwist/next"' instead?
+src/components/DoubanCustomSelector.tsx(167,9): error TS2345: Argument of type 'RefObject<HTMLDivElement | null>' is not assignable to parameter of type 'RefObject<HTMLDivElement>'.
+  Type 'HTMLDivElement | null' is not assignable to type 'HTMLDivElement'.
+    Type 'null' is not assignable to type 'HTMLDivElement'.
+src/components/DoubanCustomSelector.tsx(180,9): error TS2345: Argument of type 'RefObject<HTMLDivElement | null>' is not assignable to parameter of type 'RefObject<HTMLDivElement>'.
+  Type 'HTMLDivElement | null' is not assignable to type 'HTMLDivElement'.
+    Type 'null' is not assignable to type 'HTMLDivElement'.
+src/components/DoubanCustomSelector.tsx(195,9): error TS2345: Argument of type 'RefObject<HTMLDivElement | null>' is not assignable to parameter of type 'RefObject<HTMLDivElement>'.
+  Type 'HTMLDivElement | null' is not assignable to type 'HTMLDivElement'.
+    Type 'null' is not assignable to type 'HTMLDivElement'.
+src/components/DoubanCustomSelector.tsx(211,9): error TS2345: Argument of type 'RefObject<HTMLDivElement | null>' is not assignable to parameter of type 'RefObject<HTMLDivElement>'.
+  Type 'HTMLDivElement | null' is not assignable to type 'HTMLDivElement'.
+    Type 'null' is not assignable to type 'HTMLDivElement'.
+src/components/DoubanSelector.tsx(120,9): error TS2345: Argument of type 'RefObject<HTMLDivElement | null>' is not assignable to parameter of type 'RefObject<HTMLDivElement>'.
+  Type 'HTMLDivElement | null' is not assignable to type 'HTMLDivElement'.
+    Type 'null' is not assignable to type 'HTMLDivElement'.
+src/components/DoubanSelector.tsx(146,9): error TS2345: Argument of type 'RefObject<HTMLDivElement | null>' is not assignable to parameter of type 'RefObject<HTMLDivElement>'.
+  Type 'HTMLDivElement | null' is not assignable to type 'HTMLDivElement'.
+    Type 'null' is not assignable to type 'HTMLDivElement'.
+src/components/DoubanSelector.tsx(161,9): error TS2345: Argument of type 'RefObject<HTMLDivElement | null>' is not assignable to parameter of type 'RefObject<HTMLDivElement>'.
+  Type 'HTMLDivElement | null' is not assignable to type 'HTMLDivElement'.
+    Type 'null' is not assignable to type 'HTMLDivElement'.
+src/components/DoubanSelector.tsx(194,9): error TS2345: Argument of type 'RefObject<HTMLDivElement | null>' is not assignable to parameter of type 'RefObject<HTMLDivElement>'.
+  Type 'HTMLDivElement | null' is not assignable to type 'HTMLDivElement'.
+    Type 'null' is not assignable to type 'HTMLDivElement'.
+src/lib/m3u8-ad-filter.test.ts(64,1): error TS2593: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(65,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(68,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(70,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(71,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(72,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(75,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(80,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(83,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(93,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(94,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(97,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(98,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(102,1): error TS2593: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(103,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(106,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(107,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(108,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(111,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(114,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(118,1): error TS2593: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(119,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(122,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(123,34): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(124,34): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(125,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(127,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(130,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(133,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(136,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(137,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(138,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(139,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(140,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(143,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(146,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(147,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(149,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(150,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(151,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(154,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(171,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(172,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(173,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(174,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(177,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(186,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(189,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(193,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(195,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(196,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(199,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(202,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(205,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(206,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(210,1): error TS2593: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(231,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(233,23): error TS2304: Cannot find name 'jest'.
+src/lib/m3u8-ad-filter.test.ts(241,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(242,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(245,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(247,23): error TS2304: Cannot find name 'jest'.
+src/lib/m3u8-ad-filter.test.ts(252,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(255,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(257,23): error TS2304: Cannot find name 'jest'.
+src/lib/m3u8-ad-filter.test.ts(264,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(265,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(268,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(269,21): error TS2304: Cannot find name 'jest'.
+src/lib/m3u8-ad-filter.test.ts(283,23): error TS2304: Cannot find name 'jest'.
+src/lib/m3u8-ad-filter.test.ts(290,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(291,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(292,7): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(296,3): error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/lib/m3u8-ad-filter.test.ts(312,23): error TS2304: Cannot find name 'jest'.
+src/lib/m3u8-ad-filter.test.ts(319,5): error TS2304: Cannot find name 'expect'.
+src/lib/m3u8-ad-filter.test.ts(320,5): error TS2304: Cannot find name 'expect'.
+ ELIFECYCLE  Command failed with exit code 1.

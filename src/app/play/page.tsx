@@ -2,8 +2,8 @@
 
 'use client';
 
-import Artplayer from 'artplayer';
-import Hls from 'hls.js';
+import type ArtplayerType from 'artplayer';
+import type HlsType from 'hls.js';
 import { Heart } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
@@ -1205,16 +1205,28 @@ function PlayPageClient() {
   };
 
   useEffect(() => {
-    if (
-      !Artplayer ||
-      !Hls ||
-      !videoUrl ||
-      loading ||
-      currentEpisodeIndex === null ||
-      !artRef.current
-    ) {
+    if (!videoUrl || loading || currentEpisodeIndex === null || !artRef.current) {
       return;
     }
+    let cancelled = false;
+    let Artplayer: typeof ArtplayerType;
+    let Hls: typeof HlsType;
+    (async () => {
+      try {
+        const [artMod, hlsMod]: [any, any] = await Promise.all([
+          import('artplayer'),
+          import('hls.js'),
+        ]);
+        Artplayer = (artMod.default ?? artMod) as typeof ArtplayerType;
+        Hls = (hlsMod.default ?? hlsMod) as typeof HlsType;
+      } catch (err) {
+        console.error('加载播放器依赖失败:', err);
+        return;
+      }
+      if (cancelled) return;
+
+      const containerEl = artRef.current;
+      if (!containerEl) return;
 
     // 确保选集索引有效
     if (
@@ -1270,7 +1282,7 @@ function PlayPageClient() {
       Artplayer.USE_RAF = true;
 
       artPlayerRef.current = new Artplayer({
-        container: artRef.current,
+        container: containerEl,
         url: videoUrl,
         poster: videoCover,
         volume: 0.7,
@@ -1613,7 +1625,11 @@ function PlayPageClient() {
       console.error('创建播放器失败:', err);
       setError('播放器初始化失败');
     }
-  }, [Artplayer, Hls, videoUrl, loading, blockAdEnabled]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [videoUrl, loading, blockAdEnabled]);
 
   // 当组件卸载时清理定时器
   useEffect(() => {
@@ -1982,6 +1998,8 @@ function PlayPageClient() {
                     src={processImageUrl(videoCover)}
                     alt={videoTitle}
                     className='w-full h-full object-cover'
+                    loading='lazy'
+                    decoding='async'
                   />
                 ) : (
                   <span className='text-gray-600 dark:text-gray-400'>

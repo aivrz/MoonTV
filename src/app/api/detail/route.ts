@@ -13,9 +13,9 @@ export const runtime = 'edge';
 
 function buildCacheHeaders(cacheTime: number) {
   return {
-    'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-    'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-    'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+    'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}, stale-while-revalidate=86400`,
+    'CDN-Cache-Control': `public, s-maxage=${cacheTime}, stale-while-revalidate=86400`,
+    'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}, stale-while-revalidate=86400`,
   };
 }
 
