@@ -1682,7 +1682,7 @@ function PlayPageClient() {
                       : loadingStage === 'preferring' ||
                         loadingStage === 'ready'
                       ? 'bg-green-500'
-                      : 'bg-gray-300'
+                      : 'bg-gray-300 dark:bg-gray-600'
                   }`}
                 ></div>
                 <div
@@ -1691,14 +1691,14 @@ function PlayPageClient() {
                       ? 'bg-green-500 scale-125'
                       : loadingStage === 'ready'
                       ? 'bg-green-500'
-                      : 'bg-gray-300'
+                      : 'bg-gray-300 dark:bg-gray-600'
                   }`}
                 ></div>
                 <div
                   className={`w-3 h-3 rounded-full transition-all duration-500 ${
                     loadingStage === 'ready'
                       ? 'bg-green-500 scale-125'
-                      : 'bg-gray-300'
+                      : 'bg-gray-300 dark:bg-gray-600'
                   }`}
                 ></div>
               </div>
