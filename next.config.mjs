@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import withSerwistInit from '@serwist/next';
 
 /** @type {import('next').NextConfig} */
@@ -24,6 +26,14 @@ const nextConfig = {
   },
 
   webpack(config) {
+    // 显式声明 @/* 与 ~/* 路径别名，避免 Next 15 在部分环境下未从 tsconfig.json
+    // 正确解析 paths 导致 webpack 报 "Module not found: Can't resolve '@/...'"。
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(process.cwd(), 'src'),
+      '~': path.resolve(process.cwd(), 'public'),
+    };
+
     // Grab the existing rule that handles SVG imports
     const fileLoaderRule = config.module.rules.find((rule) =>
       rule.test?.test?.('.svg')

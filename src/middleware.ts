@@ -4,7 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
 
-export async function proxy(request: NextRequest) {
+// 注意：Next 15 的 middleware 始终运行在 Edge Runtime，无需也不允许声明
+// `export const runtime = 'edge'`（该段配置只适用于 route handler / page）。
+// Cloudflare Pages 通过 next-on-pages 部署时，middleware 会被自动识别为 Edge 中间件。
+
+export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 跳过不需要认证的路径
@@ -58,8 +62,6 @@ export async function proxy(request: NextRequest) {
   // 签名验证失败或不存在签名
   return handleAuthFailure(request, pathname);
 }
-
-export default proxy;
 
 // 验证签名
 async function verifySignature(
@@ -132,7 +134,7 @@ function shouldSkipAuth(pathname: string): boolean {
   return skipPaths.some((path) => pathname.startsWith(path));
 }
 
-// 配置proxy匹配规则
+// 配置middleware匹配规则
 export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|login|warning|api/login|api/register|api/logout|api/cron|api/server-config).*)',
