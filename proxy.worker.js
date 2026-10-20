@@ -1,100 +1,134 @@
-/* eslint-disable */
+/**
+ * MoonTV 边缘受限代理（可选组件，非开放代理）
+ * ============================================================
+ * ⚠️ 部署前必读（关系到 Cloudflare 免费额度与服务条款）：
+ *
+ * 1. 本 Worker 设计为「**同源网关**」，不是开放代理：
+ *    - 仅在 `/proxy/` 路径前缀下生效，绝不作为 catch-all 部署；
+ *    - 仅接受来自本站（Origin/Referer 命中 SITE_HOST）的请求，第三方无法滥用；
+ *    - 仅允许 http/https，且当配置了 WORKER_ALLOW_HOSTS 时目标域名必须命中白名单；
+ *    - 响应体设上限（免费额度防护），m3u8 仅在小体积内做广告过滤，超出直接透传。
+ * 2. 当前 MoonTV 默认**不集成此 Worker**：m3u8 广告过滤已在浏览器端
+ *    （src/lib/m3u8-ad-filter.ts）完成，零 Cloudflare 资源消耗，最稳。
+ *    仅当你希望「边缘侧」提前剔除广告分片时才部署本 Worker，并需自行把客户端
+ *    m3u8 拉取改为走 `/proxy/<编码后的源地址>`。
+ * 3. 免费额度：Worker 免费 10 万请求/天、单请求 CPU 10ms、脚本 1MB。
+ *    本脚本极小（无依赖），且命中 CDN 缓存（响应带 s-maxage）的重复请求不计入
+ *    Worker 调用，个人/小站完全够用。
+ *
+ * 部署方式（wrangler）：
+ *   [vars]
+ *   SITE_HOST = "你的域名.com"
+ *   WORKER_ALLOW_HOSTS = "example.com,example.cn"   # 可选，留空则不限制域名
+ * 路由仅绑定到 https://<域名>/proxy/*
+ * ============================================================
+ */
 
-addEventListener('fetch', (event) => {
-  event.respondWith(handleRequest(event.request));
-});
+const PATH_PREFIX = '/proxy/';
+// 免费额度防护：响应体硬上限，避免被大文件打爆带宽/内存
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
+// 广告过滤是 CPU 密集操作，免费 Worker 单请求仅 10ms CPU：超出此体积的 m3u8 直接透传
+const MAX_M3U8_FILTER_BYTES = 512 * 1024;
 
-async function handleRequest(request) {
-  try {
+export default {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 如果访问根目录，返回HTML
-    if (url.pathname === '/') {
-      return new Response(getRootHtml(), {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-        },
-      });
+    // 1) 仅处理 /proxy/ 前缀，杜绝 catch-all 开放代理
+    if (!url.pathname.startsWith(PATH_PREFIX)) {
+      return new Response('Not Found', { status: 404 });
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      return new Response('Method Not Allowed', { status: 405 });
     }
 
-    // 从请求路径中提取目标 URL
-    let actualUrlStr = decodeURIComponent(url.pathname.replace('/', ''));
-    actualUrlStr = ensureProtocol(actualUrlStr, url.protocol);
-    actualUrlStr += url.search;
-
-    const targetUrl = new URL(actualUrlStr);
-    const lowerPath = targetUrl.pathname.toLowerCase();
-
-    // m3u8 / m3u 走边缘广告过滤 + 缓存（客户端根本不拉广告分片）
-    if (lowerPath.endsWith('.m3u8') || lowerPath.endsWith('.m3u')) {
-      return handleM3u8(targetUrl, request);
+    // 2) 同源网关：拒绝非本站来源，防止被第三方当开放代理滥用（违反 CF 条款）
+    const siteHost = (env.SITE_HOST || url.host).replace(/^https?:\/\//, '');
+    const origin = request.headers.get('Origin') || request.headers.get('Referer') || '';
+    const sameSite =
+      origin === `https://${siteHost}` ||
+      origin === `http://${siteHost}` ||
+      origin.startsWith(`https://${siteHost}/`) ||
+      origin.startsWith(`http://${siteHost}/`);
+    if (!sameSite) {
+      return new Response('Forbidden', { status: 403 });
     }
 
-    // 创建新 Headers 对象，排除以 'cf-' 开头的请求头
-    const newHeaders = filterHeaders(
-      request.headers,
-      (name) => !name.startsWith('cf-')
-    );
-
-    const modifiedRequest = new Request(actualUrlStr, {
-      headers: newHeaders,
-      method: request.method,
-      body: request.body,
-      redirect: 'manual',
-    });
-
-    const response = await fetch(modifiedRequest);
-    let body = response.body;
-
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      body = response.body;
-      return handleRedirect(response, body);
-    } else if (response.headers.get('Content-Type')?.includes('text/html')) {
-      body = await handleHtmlContent(
-        response,
-        url.protocol,
-        url.host,
-        actualUrlStr
+    // 3) 解析目标地址
+    let target;
+    try {
+      target = new URL(
+        decodeURIComponent(url.pathname.slice(PATH_PREFIX.length)) + url.search
       );
+    } catch {
+      return new Response('Bad target', { status: 400 });
+    }
+    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+      return new Response('Bad scheme', { status: 400 });
     }
 
-    const modifiedResponse = new Response(body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
+    // 4) 可选域名白名单
+    const allow = (env.WORKER_ALLOW_HOSTS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (
+      allow.length &&
+      !allow.some((h) => target.host === h || target.host.endsWith('.' + h))
+    ) {
+      return new Response('Forbidden host', { status: 403 });
+    }
+
+    // 5) 转发（剔除 cf- 系列请求头，避免链路污染）
+    const fwdHeaders = filterHeaders(request.headers, (n) => !n.startsWith('cf-'));
+    const upstreamResp = await fetch(target.toString(), {
+      headers: fwdHeaders,
+      method: request.method,
+      redirect: 'follow',
     });
 
-    // 按资源类型决定是否边缘缓存（HTML 不缓存，静态资源长缓存）
-    setCacheHeaders(modifiedResponse.headers, response.headers.get('Content-Type'));
-    setCorsHeaders(modifiedResponse.headers);
-    return modifiedResponse;
-  } catch (error) {
-    return jsonResponse({ error: error.message }, 500);
-  }
-}
+    const contentType = upstreamResp.headers.get('Content-Type') || '';
+    const lowerPath = target.pathname.toLowerCase();
+
+    // m3u8 / m3u：边缘广告过滤 + 短缓存
+    if (
+      lowerPath.endsWith('.m3u8') ||
+      lowerPath.endsWith('.m3u') ||
+      contentType.includes('application/vnd.apple.mpegurl') ||
+      contentType.includes('application/x-mpegurl')
+    ) {
+      return handleM3u8(upstreamResp, contentType);
+    }
+
+    // 其余：按资源类型设置 CDN 缓存头（命中后不计入 Worker 调用）
+    const body = await upstreamResp.arrayBuffer();
+    if (body.byteLength > MAX_BODY_BYTES) {
+      return new Response('Payload too large', { status: 413 });
+    }
+    const out = new Response(body, {
+      status: upstreamResp.status,
+      statusText: upstreamResp.statusText,
+      headers: upstreamResp.headers,
+    });
+    setCacheHeaders(out.headers, contentType);
+    out.headers.set('Access-Control-Allow-Origin', '*');
+    return out;
+  },
+};
 
 // ---- m3u8 边缘广告过滤 ----
-async function handleM3u8(targetUrl, request) {
-  const newHeaders = filterHeaders(
-    request.headers,
-    (name) => !name.startsWith('cf-')
-  );
-  const upstream = await fetch(targetUrl.toString(), {
-    headers: newHeaders,
-    redirect: 'follow',
-  });
-
-  const contentType = upstream.headers.get('Content-Type') || '';
-  const text = await upstream.text();
-
-  // 主播放列表（多码率）原样透传
+async function handleM3u8(upstreamResp, contentType) {
+  const text = await upstreamResp.text();
+  // 主播放列表（多码率）或超大清单：原样透传，避免 CPU 超限（客户端过滤兜底）
   const filtered =
-    /#EXT-X-STREAM-INF/.test(text) ? text : filterM3u8Smart(text);
+    text.length > MAX_M3U8_FILTER_BYTES || /#EXT-X-STREAM-INF/.test(text)
+      ? text
+      : filterM3u8Smart(text);
 
   const headers = new Headers();
   headers.set('Content-Type', 'application/vnd.apple.mpegurl');
   headers.set('Access-Control-Allow-Origin', '*');
-  // 清单变化较快，短缓存 + 后台重新验证
+  // 清单变化较快，短缓存 + 后台重新验证（命中后不计入 Worker 调用）
   headers.set(
     'Cache-Control',
     'public, max-age=300, s-maxage=300, stale-while-revalidate=600'
@@ -192,8 +226,8 @@ function filterM3u8Smart(content) {
   let inCue2 = false;
   for (let i = 0; i < parsed.length; i++) {
     const p = parsed[i];
-    if (p.cue && (rawStartsWith(parsed[i].raw, '#EXT-X-CUE-OUT'))) { inCue2 = true; drop.add(i); continue; }
-    if (p.cue && (rawStartsWith(parsed[i].raw, '#EXT-X-CUE-IN'))) { inCue2 = false; drop.add(i); continue; }
+    if (p.cue && rawStartsWith(p.raw, '#EXT-X-CUE-OUT')) { inCue2 = true; drop.add(i); continue; }
+    if (p.cue && rawStartsWith(p.raw, '#EXT-X-CUE-IN')) { inCue2 = false; drop.add(i); continue; }
     if (p.cue) { drop.add(i); if (parsed[i + 1] && parsed[i + 1].seg) markSeg(i + 1); continue; }
     if (p.gap) { drop.add(i); if (parsed[i + 1] && parsed[i + 1].seg) markSeg(i + 1); continue; }
     if (inCue2 && p.seg) markSeg(i);
@@ -246,52 +280,6 @@ function rawStartsWith(raw, prefix) {
   return raw.trim().startsWith(prefix);
 }
 
-// ---- 工具函数 ----
-function ensureProtocol(url, defaultProtocol) {
-  return url.startsWith('http://') || url.startsWith('https://')
-    ? url
-    : defaultProtocol + '//' + url;
-}
-
-function handleRedirect(response, body) {
-  const location = new URL(response.headers.get('location'));
-  const modifiedLocation = `/${encodeURIComponent(location.toString())}`;
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: {
-      ...response.headers,
-      Location: modifiedLocation,
-    },
-  });
-}
-
-function handleHtmlContent(response, protocol, host, actualUrlStr) {
-  return response.text().then((originalText) => {
-    const regex = new RegExp('((href|src|action)=["\'])/(?!/)', 'g');
-    return replaceRelativePaths(
-      originalText,
-      protocol,
-      host,
-      new URL(actualUrlStr).origin
-    );
-  });
-}
-
-function replaceRelativePaths(text, protocol, host, origin) {
-  const regex = new RegExp('((href|src|action)=["\'])/(?!/)', 'g');
-  return text.replace(regex, `$1${protocol}//${host}/${origin}/`);
-}
-
-function jsonResponse(data, status) {
-  return new Response(JSON.stringify(data), {
-    status: status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-  });
-}
-
 function filterHeaders(headers, filterFunc) {
   return new Headers([...headers].filter(([name]) => filterFunc(name)));
 }
@@ -315,73 +303,4 @@ function setCacheHeaders(headers, contentType) {
   } else {
     headers.set('Cache-Control', 'public, max-age=300, s-maxage=300');
   }
-}
-
-function setCorsHeaders(headers) {
-  headers.set('Access-Control-Allow-Origin', '*');
-  headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-  headers.set('Access-Control-Allow-Headers', '*');
-}
-
-function getRootHtml() {
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
-  <title>Proxy Everything</title>
-  <link rel="icon" type="image/png" href="https://img.icons8.com/color/1000/kawaii-bread-1.png">
-  <meta name="Description" content="Proxy Everything with CF Workers.">
-  <meta property="og:description" content="Proxy Everything with CF Workers.">
-  <meta property="og:image" content="https://img.icons8.com/color/1000/kawaii-bread-1.png">
-  <meta name="robots" content="index, follow">
-  <meta http-equiv="Content-Language" content="zh-CN">
-  <meta name="copyright" content="Copyright © ymyuuu">
-  <meta name="author" content="ymyuuu">
-  <link rel="apple-touch-icon-precomposed" sizes="120x120" href="https://img.icons8.com/color/1000/kawaii-bread-1.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
-  <style>
-      body, html { height: 100%; margin: 0; }
-      .background { background-size: cover; background-position: center; height: 100%; display: flex; align-items: center; justify-content: center; }
-      .card { background-color: rgba(255,255,255,0.8); transition: background-color 0.3s ease, box-shadow 0.3s ease; }
-      .card:hover { background-color: rgba(255,255,255,1); box-shadow: 0px 8px 16px rgba(0,0,0,0.3); }
-      .input-field input[type=text] { color: #2c3e50; }
-      .input-field input[type=text]:focus+label { color: #2c3e50 !important; }
-      .input-field input[type=text]:focus { border-bottom: 1px solid #2c3e50 !important; box-shadow: 0 1px 0 0 #2c3e50 !important; }
-  </style>
-</head>
-<body>
-  <div class="background">
-      <div class="container">
-          <div class="row">
-              <div class="col s12 m8 offset-m2 l6 offset-l3">
-                  <div class="card">
-                      <div class="card-content">
-                          <span class="card-title center-align"><i class="material-icons left">link</i>Proxy Everything</span>
-                          <form id="urlForm" onsubmit="redirectToProxy(event)">
-                              <div class="input-field">
-                                  <input type="text" id="targetUrl" placeholder="在此输入目标地址" required>
-                                  <label for="targetUrl">目标地址</label>
-                              </div>
-                              <button type="submit" class="btn waves-effect waves-light teal darken-2 full-width">跳转</button>
-                          </form>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      </div>
-  </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
-  <script>
-      function redirectToProxy(event) {
-          event.preventDefault();
-          const targetUrl = document.getElementById('targetUrl').value.trim();
-          const currentOrigin = window.location.origin;
-          window.open(currentOrigin + '/' + encodeURIComponent(targetUrl), '_blank');
-      }
-  </script>
-</body>
-</html>`;
 }

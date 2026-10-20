@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "pnpm gen:runtime && pnpm gen:manifest && next dev -H 0.0.0.0",
-    "build": "pnpm gen:runtime && pnpm gen:manifest && next build",
+    "build": "pnpm gen:runtime && pnpm gen:manifest && next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "lint:fix": "eslint src --fix && pnpm format",
@@ -19,7 +19,7 @@
     "gen:version": "node scripts/generate-version.js",
     "postbuild": "echo 'Build completed - sitemap generation disabled'",
     "prepare": "husky install",
-    "pages:build": "pnpm gen:runtime && pnpm gen:manifest && next build && npx @cloudflare/next-on-pages --experimental-minify"
+    "pages:build": "pnpm gen:runtime && pnpm gen:manifest && next build --webpack && npx @cloudflare/next-on-pages --experimental-minify"
   },
   "dependencies": {
     "@cloudflare/next-on-pages": "^1.13.16",

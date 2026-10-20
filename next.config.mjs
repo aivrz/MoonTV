@@ -1,7 +1,10 @@
+import withSerwistInit from '@serwist/next';
+
 /** @type {import('next').NextConfig} */
-/* eslint-disable @typescript-eslint/no-var-requires */
 const nextConfig = {
-  output: 'standalone',
+  // standalone 产物仅用于 Docker 部署（Dockerfile 依赖 .next/standalone）。
+  // Cloudflare Pages 走 next-on-pages，不应开启 output:'standalone'。
+  ...(process.env.DOCKER_ENV === 'true' ? { output: 'standalone' } : {}),
 
   reactStrictMode: true,
 
@@ -60,9 +63,9 @@ const nextConfig = {
   },
 };
 
-const withSerwist = require('@serwist/next').default;
-
-module.exports = withSerwist({
+const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
-})(nextConfig);
+});
+
+export default withSerwist(nextConfig);
