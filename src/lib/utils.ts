@@ -6,20 +6,18 @@
 export function getImageProxyUrl(): string | null {
   if (typeof window === 'undefined') return null;
 
-  // 本地未开启图片代理，则不使用代理
-  const enableImageProxy = localStorage.getItem('enableImageProxy');
-  if (enableImageProxy !== null) {
-    if (!JSON.parse(enableImageProxy) as boolean) {
-      return null;
-    }
-  }
-
   const localImageProxy = localStorage.getItem('imageProxyUrl');
-  if (localImageProxy != null) {
-    return localImageProxy.trim() ? localImageProxy.trim() : null;
+  const enableImageProxy = localStorage.getItem('enableImageProxy');
+
+  // 用户显式填了自定义地址且未关闭 → 优先用用户设置
+  if (localImageProxy != null && localImageProxy.trim()) {
+    if (enableImageProxy === null || JSON.parse(enableImageProxy) === true) {
+      return localImageProxy.trim();
+    }
+    // 用户显式关闭 → 跳过本地，回退到平台设置（见下）
   }
 
-  // 如果未设置，则使用全局对象
+  // 回退到平台设置（环境变量 / 后台 SiteConfig.ImageProxy）
   const serverImageProxy = (window as any).RUNTIME_CONFIG?.IMAGE_PROXY;
   return serverImageProxy && serverImageProxy.trim()
     ? serverImageProxy.trim()
@@ -44,20 +42,18 @@ export function processImageUrl(originalUrl: string): string {
 export function getDoubanProxyUrl(): string | null {
   if (typeof window === 'undefined') return null;
 
-  // 本地未开启豆瓣代理，则不使用代理
-  const enableDoubanProxy = localStorage.getItem('enableDoubanProxy');
-  if (enableDoubanProxy !== null) {
-    if (!JSON.parse(enableDoubanProxy) as boolean) {
-      return null;
-    }
-  }
-
   const localDoubanProxy = localStorage.getItem('doubanProxyUrl');
-  if (localDoubanProxy != null) {
-    return localDoubanProxy.trim() ? localDoubanProxy.trim() : null;
+  const enableDoubanProxy = localStorage.getItem('enableDoubanProxy');
+
+  // 用户显式填了自定义地址且未关闭 → 优先用用户设置
+  if (localDoubanProxy != null && localDoubanProxy.trim()) {
+    if (enableDoubanProxy === null || JSON.parse(enableDoubanProxy) === true) {
+      return localDoubanProxy.trim();
+    }
+    // 用户显式关闭 → 跳过本地，回退到平台设置（见下）
   }
 
-  // 如果未设置，则使用全局对象
+  // 回退到平台设置（环境变量 / 后台 SiteConfig.DoubanProxy）
   const serverDoubanProxy = (window as any).RUNTIME_CONFIG?.DOUBAN_PROXY;
   return serverDoubanProxy && serverDoubanProxy.trim()
     ? serverDoubanProxy.trim()
