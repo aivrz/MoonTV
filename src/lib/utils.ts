@@ -24,14 +24,30 @@ export function getImageProxyUrl(): string | null {
     : null;
 }
 
+// 仅这些域名的图片走图片代理；其余站点图片直接加载，避免代理白名单拦截导致裂图
+const DOUBAN_IMAGE_HOSTS = ['doubanio.com', 'douban.com'];
+
+function isDoubanImageHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return DOUBAN_IMAGE_HOSTS.some((h) => host === h || host.endsWith('.' + h));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 处理图片 URL，如果设置了图片代理则使用代理
+ * 仅对豆瓣图片走代理；其他站点图片直接返回原地址（源站通常可直接加载）
  */
 export function processImageUrl(originalUrl: string): string {
   if (!originalUrl) return originalUrl;
 
   const proxyUrl = getImageProxyUrl();
   if (!proxyUrl) return originalUrl;
+
+  // 仅豆瓣图片走代理；其他站点图片直接加载（避免代理白名单拦截导致裂图）
+  if (!isDoubanImageHost(originalUrl)) return originalUrl;
 
   return `${proxyUrl}${encodeURIComponent(originalUrl)}`;
 }
