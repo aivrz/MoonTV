@@ -1,19 +1,20 @@
 /**
- * EdgeOne 边缘函数：豆瓣数据 API 代理
+ * EdgeOne Makers 边缘函数：豆瓣数据 API 代理
  *
- * 用途：解决 Cloudflare Pages 服务端直连 m.douban.com 被豆瓣拦截（403）的问题。
- * 客户端（MoonTV src/lib/douban.client.ts / utils.ts processDoubanUrl）的调用格式为：
+ * 路由：
+ *   /douban/<URL编码后的豆瓣地址>
+ *   /douban/?url=<URL编码后的豆瓣地址>
+ * 客户端（MoonTV src/lib/douban.client.ts / utils.ts processDoubanUrl）调用格式：
  *   `${豆瓣代理地址}${encodeURIComponent(豆瓣URL)}`
- * 即：路径为一段 URL 编码后的豆瓣地址，例如
- *   https://你的代理域名/https%3A%2F%2Fm.douban.com%2Frexxar%2Fapi%2Fv2%2F...
+ * 因此 MoonTV 后台「豆瓣代理」应填： https://你的域名/douban/
  *
- * 部署（EdgeOne Pages 控制台）：
- *   1. 创建项目 → 连接本仓库 → 根目录选择 edgeone/douban-proxy
- *   2. 构建命令留空，输出目录填 .（或 ./）
- *   3. 部署后在「域名管理」绑定你的未备案域名（使用海外可用区加速）
- *   4. MoonTV 管理后台「豆瓣代理」填：https://你的代理域名/
+ * 部署（EdgeOne Makers 控制台）：
+ *   1. 创建项目 → 连接本仓库 → 根目录 edgeone/douban-proxy
+ *   2. 框架预设选 Other，构建命令/安装命令均留空，输出目录 .
+ *   3. 加速区域：备案域名可选「含中国大陆」，否则选「不含中国大陆」
+ *   4. 部署后绑定域名，后台「豆瓣代理」填 https://域名/douban/
  *
- * 注意：此函数只允许转发豆瓣域名，防止被滥用为开放代理。
+ * 安全：仅允许转发 douban.com / doubanio.com，防止被滥用为开放代理。
  */
 
 const ALLOWED_HOST_SUFFIXES = ['douban.com', 'doubanio.com'];
@@ -46,21 +47,20 @@ function isAllowedTarget(target) {
   }
 }
 
-/** 从请求中解析目标豆瓣 URL：支持路径前缀式与 ?url= 查询参数式 */
+/** 解析目标豆瓣 URL：剥离本函数 /douban/ 前缀，支持路径式与 ?url= 式 */
 function extractTarget(requestUrl) {
   const u = new URL(requestUrl);
 
-  // 形如 /?url=https%3A%2F%2Fm.douban.com%2F...
   const byQuery = u.searchParams.get('url');
   if (byQuery) return decodeURIComponent(byQuery);
 
-  // 形如 /https%3A%2F%2Fm.douban.com%2F...
-  const rawPath = u.pathname.replace(/^\/+/, '');
+  let rawPath = u.pathname.replace(/^\/+/, '');
+  rawPath = rawPath.replace(/^douban\//, ''); // 去掉路由前缀
   if (rawPath) {
     try {
       return decodeURIComponent(rawPath);
     } catch {
-      return rawPath; // 已是未编码形式
+      return rawPath;
     }
   }
   return null;
@@ -82,7 +82,8 @@ async function handle(request) {
     return new Response(
       JSON.stringify({
         error: 'Missing target URL',
-        usage: '/https%3A%2F%2Fm.douban.com%2F...  或  /?url=<encoded douban url>',
+        usage:
+          '/douban/https%3A%2F%2Fm.douban.com%2F...  或  /douban/?url=<encoded>',
       }),
       { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders() } }
     );
@@ -97,13 +98,14 @@ async function handle(request) {
   const upstream = await fetch(target, {
     method: request.method,
     headers: UPSTREAM_HEADERS,
-    // 边缘函数自身 10s 超时由平台控制，这里不额外 abort
   });
 
   // 边缘缓存 5 分钟，命中后不回源豆瓣，降低被风控概率
   const headers = {
-    'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
-    'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+    'Content-Type':
+      upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+    'Cache-Control':
+      'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
     ...corsHeaders(),
   };
   return new Response(request.method === 'HEAD' ? null : upstream.body, {
@@ -117,7 +119,10 @@ export async function onRequest(context) {
     return await handle(context.request);
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: 'Douban proxy failed', details: String((err && err.message) || err) }),
+      JSON.stringify({
+        error: 'Douban proxy failed',
+        details: String((err && err.message) || err),
+      }),
       { status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders() } }
     );
   }
