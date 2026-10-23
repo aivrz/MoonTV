@@ -108,7 +108,12 @@ async function handle(request) {
       'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
     ...corsHeaders(),
   };
-  return new Response(request.method === 'HEAD' ? null : upstream.body, {
+  // 缓冲 body 而非透传流：Safari 在跨源(CORS) fetch 下无法可靠读取流式响应体，
+  // 会导致请求 200 但 response.json() 抛错（表现为「获取豆瓣分类数据失败」）。
+  // 缓冲为定长 arrayBuffer 后 Chrome/Firefox/Safari 均可正常解析。
+  const body =
+    request.method === 'HEAD' ? null : await upstream.arrayBuffer();
+  return new Response(body, {
     status: upstream.status,
     headers,
   });
