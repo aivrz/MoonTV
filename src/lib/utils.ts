@@ -49,7 +49,9 @@ export function processImageUrl(originalUrl: string): string {
   // 仅豆瓣图片走代理；其他站点图片直接加载（避免代理白名单拦截导致裂图）
   if (!isDoubanImageHost(originalUrl)) return originalUrl;
 
-  return `${proxyUrl}${encodeURIComponent(originalUrl)}`;
+  // 用 ?url= 查询参数传递目标地址，避免 Safari/WebKit 解码路径中的 %2F/%3F/%26 导致代理地址错乱
+  const base = proxyUrl.endsWith('/') ? proxyUrl : proxyUrl + '/';
+  return `${base}?url=${encodeURIComponent(originalUrl)}`;
 }
 
 /**
@@ -85,7 +87,9 @@ export function processDoubanUrl(originalUrl: string): string {
   const proxyUrl = getDoubanProxyUrl();
   if (!proxyUrl) return originalUrl;
 
-  return `${proxyUrl}${encodeURIComponent(originalUrl)}`;
+  // 用 ?url= 查询参数传递目标地址，避免 Safari/WebKit 解码路径中的 %2F/%3F/%26 导致代理地址错乱
+  const base = proxyUrl.endsWith('/') ? proxyUrl : proxyUrl + '/';
+  return `${base}?url=${encodeURIComponent(originalUrl)}`;
 }
 
 export function cleanHtmlTags(text: string): string {

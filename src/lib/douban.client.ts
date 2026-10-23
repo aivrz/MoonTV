@@ -37,7 +37,12 @@ async function fetchWithTimeout(
 
   // 检查是否使用代理
   const proxyUrl = getDoubanProxyUrl();
-  const finalUrl = proxyUrl ? `${proxyUrl}${encodeURIComponent(url)}` : url;
+  // 用 ?url= 查询参数传递目标地址，而非拼在路径里：
+  // Safari/WebKit 会解码路径中的 %2F/%3F/%26，导致代理收到的地址错乱（仅苹果设备复现）。
+  // 查询串里的百分号编码 Safari 不会解码，EO 函数 extractTarget 优先读取 ?url=。
+  const finalUrl = proxyUrl
+    ? `${proxyUrl.endsWith('/') ? proxyUrl : proxyUrl + '/'}?url=${encodeURIComponent(url)}`
+    : url;
 
   const fetchOptions: RequestInit = {
     ...options,
