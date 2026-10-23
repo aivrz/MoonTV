@@ -51,7 +51,7 @@ export function processImageUrl(originalUrl: string): string {
 
   // 用 ?url= 查询参数传递目标地址，避免 Safari/WebKit 解码路径中的 %2F/%3F/%26 导致代理地址错乱
   const base = proxyUrl.endsWith('/') ? proxyUrl : proxyUrl + '/';
-  return `${base}?url=${encodeURIComponent(originalUrl)}`;
+  return `${base}p?url=${encodeURIComponent(originalUrl)}`;
 }
 
 /**
@@ -89,7 +89,7 @@ export function processDoubanUrl(originalUrl: string): string {
 
   // 用 ?url= 查询参数传递目标地址，避免 Safari/WebKit 解码路径中的 %2F/%3F/%26 导致代理地址错乱
   const base = proxyUrl.endsWith('/') ? proxyUrl : proxyUrl + '/';
-  return `${base}?url=${encodeURIComponent(originalUrl)}`;
+  return `${base}p?url=${encodeURIComponent(originalUrl)}`;
 }
 
 export function cleanHtmlTags(text: string): string {

@@ -41,7 +41,7 @@ async function fetchWithTimeout(
   // Safari/WebKit 会解码路径中的 %2F/%3F/%26，导致代理收到的地址错乱（仅苹果设备复现）。
   // 查询串里的百分号编码 Safari 不会解码，EO 函数 extractTarget 优先读取 ?url=。
   const finalUrl = proxyUrl
-    ? `${proxyUrl.endsWith('/') ? proxyUrl : proxyUrl + '/'}?url=${encodeURIComponent(url)}`
+    ? `${proxyUrl.endsWith('/') ? proxyUrl : proxyUrl + '/'}p?url=${encodeURIComponent(url)}`
     : url;
 
   const fetchOptions: RequestInit = {
