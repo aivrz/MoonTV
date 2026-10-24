@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { defaultCache } from '@serwist/next/worker';
-import { CacheFirst, ExpirationPlugin, Serwist, StaleWhileRevalidate } from 'serwist';
+import { CacheFirst, ExpirationPlugin, NetworkOnly, Serwist, StaleWhileRevalidate } from 'serwist';
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from 'serwist';
 
 declare global {
@@ -12,6 +12,14 @@ declare global {
 declare const self: ServiceWorkerGlobalScope;
 
 const runtimeCaching: RuntimeCaching[] = [
+  {
+    // 跨源 fetch（destination 为空，即 JS fetch() 发出的 API 请求，如豆瓣/图片代理 JSON）
+    // 一律直接走网络、不缓存不拦截。置于最前以覆盖 defaultCache 里的跨源兜底路由：
+    // Safari 的 SW 处理此类跨源请求会 respondWith no-response，导致「获取豆瓣分类数据失败」，
+    // 且此类 API 响应本就不该被 SW 缓存（ 配置/数据需即时生效）。
+    matcher: ({ request, sameOrigin }) => !sameOrigin && request.destination === '',
+    handler: new NetworkOnly(),
+  },
   ...defaultCache,
   {
     // 谷歌字体：后台预加载 + 陈旧时重新校验
