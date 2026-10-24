@@ -48,9 +48,11 @@ async function fetchWithTimeout(
     ...options,
     signal: controller.signal,
     headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-      Referer: 'https://movie.douban.com/',
+      // 只保留简单头，避免触发 CORS 预检：
+      // User-Agent 现代浏览器允许设置，会让请求变为非简单请求而触发预检，
+      // Safari 因代理响应 Access-Control-Allow-Headers 未含 User-Agent 而预检失败
+      // （报 Request header field User-Agent is not allowed...），导致「获取豆瓣分类数据失败」。
+      // Referer 是禁止头，浏览器一律忽略。真实 UA 由边缘代理函数在服务端注入。
       Accept: 'application/json, text/plain, */*',
       ...options.headers,
     },
